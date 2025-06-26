@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Study Log Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      padding: 20px;
+    }
+    h2 {
+      color: #4B0082;
+    }
+    input, select, button {
+      padding: 8px;
+      margin: 5px;
+      font-size: 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: center;
+    }
+    th {
+      background-color: #6a5acd;
+      color: white;
+    }
+    #totalTime {
+      margin-top: 15px;
+      font-weight: bold;
+      color: #333;
+    }
+    canvas {
+      max-width: 100%;
+      margin-top: 40px;
+    }
+
+    .nav-frame {
+  width: 100%;
+  height: 78px; /* Adjust if your navbar is taller */
+  border: none;
+  overflow: hidden;
+}
+
+button {
+  background-color: #10b981; /* Emerald Green */
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: bolder;
+  border-radius: 6px;
+  padding: 8px 16px 8px 16px;
+  font-size: 100%;
+
+}
+
+button:hover {
+  background-color: #059669;
+}
+
+  </style>
+</head>
+<body onload="displayTodayLog(); drawCharts();">
+    <!-- Navbar Include -->
+   <iframe src="navbar.html" class="nav-frame" frameborder="0"></iframe>
+  <h2>📘 Study Hour Tracker</h2>
+
+  <input type="text" id="subject" placeholder="Subject" />
+  <input type="text" id="topic" placeholder="Topic" />
+  <input type="time" id="start" />
+  <input type="time" id="end" />
+  <select id="focus">
+    <option value="Distracted">😵 Distracted</option>
+    <option value="Low">😐 Low</option>
+    <option value="Medium">🙂 Medium</option>
+    <option value="High">😃 High</option>
+    <option value="Flow">🚀 Flow</option>
+  </select>
+  <button onclick="addStudyLog()"> ✔ Add</button>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Subject</th>
+        <th>Topic</th>
+        <th>Start</th>
+        <th>End</th>
+        <th>Duration (hrs)</th>
+        <th>Focus</th>
+        <th>Delete</th>
+      </tr>
+    </thead>
+    <tbody id="logBody"></tbody>
+  </table>
+  <p id="totalTime"></p>
+
+  <canvas id="weeklyChart"></canvas>
+  <canvas id="monthlyChart"></canvas>
+  <canvas id="subjectChart"></canvas>
+  <canvas id="focusChart"></canvas>
+
+  <script>
+    let weeklyChart, monthlyChart, subjectChart, focusChart;
+
+    function addStudyLog() {
+      const subject = document.getElementById("subject").value;
+      const topic = document.getElementById("topic").value;
+      const start = document.getElementById("start").value;
+      const end = document.getElementById("end").value;
+      const focus = document.getElementById("focus").value;
+
+      if (!subject || !topic || !start || !end) return alert("Fill all fields!");
+
+      const [sh, sm] = start.split(":").map(Number);
+      const [eh, em] = end.split(":").map(Number);
+      const duration = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
+      if (duration <= 0) return alert("End time must be after start time!");
+
+      const today = new Date().toISOString().split("T")[0];
+      const data = JSON.parse(localStorage.getItem("studyLogs") || "{}");
+      if (!data[today]) data[today] = [];
+      data[today].push({ subject, topic, start, end, focus, duration });
+      localStorage.setItem("studyLogs", JSON.stringify(data));
+
+      displayTodayLog();
+      drawCharts();
+
+      document.getElementById("subject").value = "";
+      document.getElementById("topic").value = "";
+      document.getElementById("start").value = "";
+      document.getElementById("end").value = "";
+    }
+
+    function displayTodayLog() {
+  const today = new Date().toISOString().split("T")[0];
+  const data = JSON.parse(localStorage.getItem("studyLogs") || "{}");
+  const logs = data[today] || [];
+
+  let html = "";
+  let total = 0;
+  logs.forEach((log, index) => {
+    html += `<tr>
+      <td>${log.subject}</td>
+      <td>${log.topic}</td>
+      <td>${log.start}</td>
+      <td>${log.end}</td>
+      <td>${log.duration.toFixed(2)}</td>
+      <td>${log.focus}</td>
+      <td><button onclick="deleteLog(${index})">❌</button></td>
+    </tr>`;
+    total += log.duration;
+  });
+
+  document.getElementById("logBody").innerHTML = html;
+  document.getElementById("totalTime").innerText = `Total Today: ${total.toFixed(2)} hrs`;
+}
+
+    function deleteLog(index) {
+  const today = new Date().toISOString().split("T")[0];
+  const data = JSON.parse(localStorage.getItem("studyLogs") || "{}");
+  if (!data[today]) return;
+
+  data[today].splice(index, 1); // remove the selected entry
+  localStorage.setItem("studyLogs", JSON.stringify(data));
+
+  displayTodayLog();  // update table
+  drawCharts();       // refresh charts
+}
+
+
+    function destroyChart(chart) {
+      if (chart) chart.destroy();
+    }
+
+    function drawCharts() {
+      const data = JSON.parse(localStorage.getItem("studyLogs") || "{}");
+      const today = new Date();
+      const weekDays = [];
+      const weeklyHours = [];
+      const monthDays = {};
+      const subjectTotals = {};
+      const focusTotals = { Distracted: 0, Low: 0, Medium: 0, High: 0, Flow: 0 };
+
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+        const key = date.toISOString().split("T")[0];
+        weekDays.push(key.slice(5));
+        const logs = data[key] || [];
+        const total = logs.reduce((sum, log) => sum + log.duration, 0);
+        weeklyHours.push(total);
+      }
+
+      Object.keys(data).forEach(key => {
+        const date = new Date(key);
+        if (date.getMonth() === today.getMonth()) {
+          const day = key.slice(8);
+          const total = data[key].reduce((sum, log) => sum + log.duration, 0);
+          monthDays[day] = total;
+        }
+
+        data[key].forEach(log => {
+          subjectTotals[log.subject] = (subjectTotals[log.subject] || 0) + log.duration;
+          focusTotals[log.focus] += log.duration;
+        });
+      });
+
+      destroyChart(weeklyChart);
+      destroyChart(monthlyChart);
+      destroyChart(subjectChart);
+      destroyChart(focusChart);
+
+      weeklyChart = new Chart(document.getElementById("weeklyChart").getContext("2d"), {
+        type: 'line',
+        data: {
+          labels: weekDays,
+          datasets: [{
+            label: 'Daily Study Hours (This Week)',
+            data: weeklyHours,
+            borderColor: '#6a5acd',
+            backgroundColor: '#ddd0ff',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: { responsive: true }
+      });
+
+      monthlyChart = new Chart(document.getElementById("monthlyChart").getContext("2d"), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(monthDays),
+          datasets: [{
+            label: 'Study Hours This Month',
+            data: Object.values(monthDays),
+            backgroundColor: '#4B0082'
+          }]
+        },
+        options: { responsive: true }
+      });
+
+      subjectChart = new Chart(document.getElementById("subjectChart").getContext("2d"), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(subjectTotals),
+          datasets: [{
+            label: 'Total Time by Subject',
+            data: Object.values(subjectTotals),
+            backgroundColor: '#9370DB'
+          }]
+        },
+        options: { responsive: true }
+      });
+
+      focusChart = new Chart(document.getElementById("focusChart").getContext("2d"), {
+        type: 'pie',
+        data: {
+          labels: Object.keys(focusTotals),
+          datasets: [{
+            label: 'Focus Distribution',
+            data: Object.values(focusTotals),
+            backgroundColor: ['#ff9999','#ffcc99','#ffff99','#ccff99','#99ffcc']
+          }]
+        },
+        options: { responsive: true }
+      });
+    }
+  </script>
+</body>
+</html>
